@@ -1,0 +1,89 @@
+---
+- name: Setup Docker on a Debian-based System
+  hosts: all
+  become: true
+  tasks:
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: yes
+
+    - name: Add Docker's official GPG key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/debian/gpg
+        state: present
+
+    - name: Set up the Docker repository for Debian (Fallback to Buster for Kali)
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/debian buster stable"
+        state: present
+        update_cache: yes
+
+    - name: Installing Docker
+      ansible.builtin.apt:
+        name: docker-ce
+        state: present
+        update_cache: yes
+      register: docker_install
+
+    - name: Checking Install Status
+      ansible.builtin.debug:
+        var: docker_install.changed
+
+    - name: Starting Docker Daemon
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Install Docker SDK for Python
+      ansible.builtin.pip:
+        name: docker
+        state: present
+
+    - name: Pull a Docker Image
+      community.docker.docker_image:
+        name: httpd
+        source: pull
+      register: image_pull
+
+    - name: Checking Pull Status
+      ansible.builtin.debug:
+        var: image_pull
+
+    - name: Creating a Persistent Volume Directory
+      ansible.builtin.file:
+        path: "/root/pv"
+        state: directory
+
+    - name: Copying the HTML code into the Directory
+      ansible.builtin.copy:
+        src: "/home/hacker/page.html"
+        dest: "/root/pv/page.html"
+
+    - name: Create a Docker network with a specific subnet
+      community.docker.docker_network:
+        name: apache_network
+        ipam_config:
+          - subnet: "172.168.10.0/30"
+      register: network_setup
+
+    - name: Launching an HTTPD Container with specific network
+      community.docker.docker_container:
+        name: apache-server
+        image: httpd
+        state: started
+        exposed_ports:
+          - "80"
+        ports:
+          - "8080:80"
+        volumes:
+          - "/root/pv:/usr/local/apache2/htdocs"
+        networks:
+          - name: apache_network
